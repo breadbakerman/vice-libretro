@@ -2094,7 +2094,7 @@ static void retro_set_paths(void)
               string_is_empty(save_dir) ? retro_system_directory : save_dir,
               sizeof(retro_save_directory));
    }
-   else
+   else if (!retro_save_directory)
    {
       /* Make retro_save_directory the same in case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY is not implemented by the frontend */
       strlcpy(retro_save_directory,
@@ -3292,6 +3292,20 @@ static void retro_set_core_options()
             { NULL, NULL },
          },
          "bottom"
+      },
+      {
+         "vice_statusbar_startup",
+         "OSD > Statusbar Startup",
+         "Statusbar Startup",
+         "Show statusbar on startup.",
+         NULL,
+         "osd",
+         {
+            { "disabled", NULL },
+            { "enabled", NULL },
+            { NULL, NULL },
+         },
+         "disabled"
       },
       {
          "vice_statusbar_messages",
@@ -5085,6 +5099,8 @@ void retro_set_options_display(void)
    environ_cb(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY, &option_display);
    option_display.key = "vice_statusbar";
    environ_cb(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY, &option_display);
+   option_display.key = "vice_statusbar_startup";
+   environ_cb(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY, &option_display);
    option_display.key = "vice_statusbar_messages";
    environ_cb(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY, &option_display);
    option_display.key = "vice_joyport_pointer_color";
@@ -5209,20 +5225,19 @@ bool retro_update_display(void)
 
 void retro_set_environment(retro_environment_t cb)
 {
-   /* Skip everything if environment is already set, because
-    * for some reason it is called multiple times after init.. */
-   if (environ_cb)
-      return;
-
    environ_cb = cb;
-   retro_set_inputs();
 
    /* Must set these here for the dynamic cartridge option */
    retro_set_paths();
+
    retro_set_core_options();
+   retro_set_inputs();
 
    bool support_no_game = true;
    environ_cb(RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME, &support_no_game);
+
+   struct retro_core_options_update_display_callback update_display_callback = {retro_update_display};
+   environ_cb(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_UPDATE_DISPLAY_CALLBACK, &update_display_callback);
 
    struct retro_led_interface led_interface;
    if (environ_cb(RETRO_ENVIRONMENT_GET_LED_INTERFACE, &led_interface))
@@ -6841,6 +6856,19 @@ static void update_variables(void)
       if (strstr(var.value, "minimal")) opt_statusbar |= STATUSBAR_MINIMAL;
    }
 
+   var.key = "vice_statusbar_startup";
+   var.value = NULL;
+   if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
+   {
+      if (!retro_ui_finalized)
+      {
+         if (!strcmp(var.value, "enabled"))
+            retro_statusbar = true;
+         else
+            retro_statusbar = false;
+      }
+   }
+
    var.key = "vice_statusbar_messages";
    var.value = NULL;
    if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
@@ -7679,9 +7707,6 @@ void retro_init(void)
 
    static struct retro_keyboard_callback keyboard_callback = {retro_keyboard_event};
    environ_cb(RETRO_ENVIRONMENT_SET_KEYBOARD_CALLBACK, &keyboard_callback);
-
-   static struct retro_core_options_update_display_callback update_display_callback = {retro_update_display};
-   environ_cb(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_UPDATE_DISPLAY_CALLBACK, &update_display_callback);
 
    bool achievements = true;
    environ_cb(RETRO_ENVIRONMENT_SET_SUPPORT_ACHIEVEMENTS, &achievements);
